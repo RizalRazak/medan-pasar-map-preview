@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Medan Pasar — Interactive Tenant Map (OpenStreetMap Preview)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #5FA92B;
+    --darkgreen: #3F7A1D;
+    --black: #202124;
+    --grey: #5f6368;
+    --lightgrey: #e8eaed;
+    --food: #E8752C;    --food-d: #C25E1C;
+    --fashion: #9B4FC2; --fashion-d: #7B37A0;
+    --craft: #3F9142;   --craft-d: #2C6D2F;
+    --service: #2E86C1; --service-d: #216998;
+    --attraction: #D4A017; --attraction-d: #A9800F;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: 'Roboto', Arial, sans-serif;
+    background: #fff;
+    color: var(--black);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ================= SIDEBAR (Google-Maps-style results panel) ================= */
+  #sidebar {
+    width: 340px;
+    flex: 0 0 340px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: 2px 0 6px rgba(0,0,0,0.15);
+    z-index: 20;
+  }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px 10px;
+  }
+  .brand-row .wordmark { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; }
+  .brand-row .wordmark span.web { color: var(--green); }
+  .brand-row .wordmark span.impian { color: var(--black); }
+  .brand-row .previewtag {
+    margin-left: auto;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--grey);
+    background: var(--lightgrey);
+    padding: 3px 9px;
+    border-radius: 10px;
+  }
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 2px 16px 12px;
+    padding: 11px 14px;
+    background: #fff;
+    border: 1px solid #dfe1e5;
+    border-radius: 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  }
+  .search-box:focus-within { box-shadow: 0 1px 6px rgba(0,0,0,0.22); }
+  .search-box svg { width: 18px; height: 18px; fill: var(--grey); flex: 0 0 auto; }
+  .search-box input {
+    border: none;
+    outline: none;
+    font-size: 14.5px;
+    font-family: 'Roboto', Arial, sans-serif;
+    width: 100%;
+    color: var(--black);
+  }
+  .search-box input::placeholder { color: #80868b; }
+  .search-box .clear-btn {
+    cursor: pointer;
+    display: none;
+    flex: 0 0 auto;
+  }
+  .search-box .clear-btn svg { width: 16px; height: 16px; fill: #80868b; }
+  .pill-row {
+    display: flex;
+    gap: 8px;
+    padding: 0 16px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pill-row::-webkit-scrollbar { display: none; }
+  .pill {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 7px 13px;
+    border-radius: 18px;
+    border: 1px solid #dadce0;
+    background: #fff;
+    color: var(--black);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .pill svg { width: 14px; height: 14px; fill: var(--grey); }
+  .pill.active { background: var(--darkgreen); border-color: var(--darkgreen); color: #fff; }
+  .pill.active svg { fill: #fff; }
+  .result-count {
+    font-size: 12px;
+    color: var(--grey);
+    padding: 0 16px 8px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+  }
+  #tenant-list {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    padding: 4px 0 16px;
+  }
+  .tenant-card {
+    display: flex;
+    gap: 12px;
+    padding: 11px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f1f1;
+    transition: background 0.15s ease;
+  }
+  .tenant-card:hover, .tenant-card.selected { background: #f6f8fa; }
+  .tenant-card .icon-badge {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .tenant-card .icon-badge svg { width: 19px; height: 19px; fill: #fff; }
+  .tenant-card .info { min-width: 0; flex: 1 1 auto; }
+  .tenant-card .info .name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--black);
+    line-height: 1.35;
+    margin-bottom: 2px;
+  }
+  .tenant-card .rating-row { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--grey); margin-bottom: 1px; }
+  .tenant-card .rating-row .stars { color: #f5a623; letter-spacing: -1px; font-size: 11px; }
+  .tenant-card .cat-line { font-size: 12.5px; color: var(--grey); }
+  .tenant-card .cat-line .dot-sep { margin: 0 4px; }
+
+  /* ================= MAP AREA ================= */
+  #map-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
+  #map { width: 100%; height: 100%; }
+
+  .brand-chip {
+    position: absolute;
+    left: 12px; bottom: 8px;
+    z-index: 15;
+    font-size: 11px;
+    font-weight: 500;
+    color: #444;
+    background: rgba(255,255,255,0.88);
+    padding: 4px 10px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+  .disclaimer-chip {
+    position: absolute;
+    left: 12px; bottom: 30px;
+    z-index: 15;
+    font-size: 10.5px;
+    color: var(--grey);
+    background: rgba(255,255,255,0.88);
+    padding: 3px 9px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  /* Google-style floating circular controls */
+  .gmap-fab {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .gmap-fab:hover { background: #f5f5f5; }
+  .gmap-fab svg { width: 20px; height: 20px; fill: #2E86C1; }
+  .leaflet-control-zoom { border: none !important; box-shadow: none !important; margin-bottom: 10px !important; }
+  .leaflet-control-zoom a {
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 40px !important;
+    font-size: 19px !important;
+    color: #444 !important;
+    background: #fff !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35) !important;
+    border-radius: 50% !important;
+    margin-bottom: 8px !important;
+    border: none !important;
+  }
+  .leaflet-control-zoom a:hover { background: #f5f5f5 !important; }
+  .leaflet-bar { border: none !important; }
+  .leaflet-touch .leaflet-bar a:first-child,
+  .leaflet-touch .leaflet-bar a:last-child { border-radius: 50% !important; }
+
+  /* ---------- Google-style teardrop pin ---------- */
+  .gpin-anchor { position: relative; width: 40px; height: 46px; }
+  .gpin {
+    position: absolute;
+    top: 4px; left: 4px;
+    width: 32px; height: 32px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.45);
+    transition: transform 0.15s ease;
+  }
+  .gpin-anchor:hover .gpin { transform: rotate(-45deg) scale(1.15); }
+  .gpin-icon-wrap {
+    position: absolute;
+    top: 0; left: 0; width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .gpin-icon-wrap svg { width: 16px; height: 16px; fill: #fff; }
+
+  /* ---------- Popup / place card ---------- */
+  .leaflet-popup-content-wrapper { border-radius: 12px; padding: 0; overflow: hidden; }
+  .leaflet-popup-content { margin: 0; width: 290px !important; font-family: 'Roboto', Arial, sans-serif; }
+  .leaflet-popup-tip { display: none; }
+  .card-banner {
+    height: 92px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.18) 0%, transparent 45%),
+      radial-gradient(circle at 80% 75%, rgba(0,0,0,0.12) 0%, transparent 50%);
+  }
+  .card-banner svg { width: 38px; height: 38px; fill: rgba(255,255,255,0.95); position: relative; z-index: 1; }
+  .card-open-badge {
+    position: absolute;
+    top: 9px; right: 10px;
+    background: rgba(255,255,255,0.92);
+    color: #1a7a1a;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+  }
+  .card-body { padding: 13px 15px 8px; }
+  .card-title { font-size: 16px; font-weight: 700; color: var(--black); margin: 0 0 3px; }
+  .card-cat-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; font-size: 12.5px; color: var(--grey); }
+  .card-cat-row .stars { color: #f5a623; letter-spacing: -1px; font-size: 11.5px; }
+  .card-cat-row .reviews { color: var(--grey); }
+  .card-desc { font-size: 12.5px; color: #3c4043; line-height: 1.45; margin-bottom: 10px; }
+  .card-detail-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    font-size: 12.5px;
+    color: #3c4043;
+    margin-bottom: 7px;
+  }
+  .card-detail-row svg { width: 14px; height: 14px; fill: var(--grey); flex: 0 0 auto; margin-top: 1px; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 4px; }
+  .card-tag {
+    font-size: 10.5px;
+    background: #f1f3f4;
+    color: #444;
+    padding: 3px 8px;
+    border-radius: 8px;
+  }
+  .card-actions {
+    display: flex;
+    border-top: 1px solid #eee;
+    margin-top: 8px;
+  }
+  .card-action {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 9px 0 10px;
+    cursor: pointer;
+    color: #1a73e8;
+    text-decoration: none;
+  }
+  .card-action:hover { background: #f6f8fa; }
+  .card-action svg { width: 18px; height: 18px; fill: #1a73e8; }
+  .card-action span { font-size: 10.5px; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="brand-row">
+    <div class="wordmark"><span class="web">WEB</span><span class="impian">IMPIAN</span></div>
+    <span class="previewtag">Concept Preview</span>
+  </div>
+  <div class="search-box">
+    <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+    <input id="search-input" type="text" placeholder="Search tenants & attractions" />
+    <span class="clear-btn" id="clear-search"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+  </div>
+  <div class="pill-row" id="filters"></div>
+  <div class="result-count" id="result-count"></div>
+  <div id="tenant-list"></div>
+</div>
+
+<div id="map-wrap">
+  <div id="map"></div>
+  <div class="disclaimer-chip">Sample data for illustration only</div>
+  <div class="brand-chip">Web Impian Sdn. Bhd. (920163-H) — concept preview</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  // ---------- Icon SVGs ----------
+  const ICONS = {
+    food: `<svg viewBox="0 0 24 24"><path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41L13.41 13l1.47-1.47z"/></svg>`,
+    fashion: `<svg viewBox="0 0 24 24"><path d="M16.5 3c-1.24 1.24-2.99 2-4.5 2s-3.26-.76-4.5-2L4 6l2.5 2.5L8 7v13h8V7l1.5 1.5L20 6l-3.5-3z"/></svg>`,
+    craft: `<svg viewBox="0 0 24 24"><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.1 0 2-.9 2-2 0-.51-.2-.98-.52-1.32-.3-.33-.48-.77-.48-1.25 0-1.1.9-1.93 2-1.93h2.5c2.76 0 5-2.24 5-5C22.5 5.94 17.81 2 12 2zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm3-4C8.67 7 8 6.33 8 5.5S8.67 4 9.5 4s1.5.67 1.5 1.5S10.33 7 9.5 7zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4s1.5.67 1.5 1.5S15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>`,
+    service: `<svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`,
+    pin: `<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>`,
+    clock: `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`,
+    phone: `<svg viewBox="0 0 24 24"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.24 1.01l-2.21 2.2z"/></svg>`,
+    landmark: `<svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 7.1-1.01z"/></svg>`,
+    walk: `<svg viewBox="0 0 24 24"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg>`,
+    directions: `<svg viewBox="0 0 24 24"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V17l-4-4 4-4v2.5c2.79 0 5 1.22 5 4.5-1.28-1.09-2.5-1.5-5-1.5z"/></svg>`,
+    share: `<svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L7.04 9.81C6.5 9.31 5.79 9 5 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg>`,
+    all: `<svg viewBox="0 0 24 24"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>`,
+    close: `<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
+    locate: `<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>`,
+  };
+
+  const CATS = {
+    food:       { label: "Food & Beverage", color: "#E8752C", dark: "#C25E1C", icon: ICONS.food },
+    fashion:    { label: "Fashion & Textile", color: "#9B4FC2", dark: "#7B37A0", icon: ICONS.fashion },
+    craft:      { label: "Handicraft & Arts", color: "#3F9142", dark: "#2C6D2F", icon: ICONS.craft },
+    service:    { label: "Services & Info", color: "#2E86C1", dark: "#216998", icon: ICONS.service },
+    attraction: { label: "KL Attraction", color: "#D4A017", dark: "#A9800F", icon: ICONS.landmark },
+  };
+
+  const MEDAN_PASAR_CENTER = [3.1468, 101.6963];
+
+  function distanceKm(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  const attractions = [
+    { name: "Petronas Twin Towers (KLCC)", cat: "attraction", lat: 3.1579, lng: 101.7116,
+      desc: "Iconic 88-storey twin towers, once the world's tallest buildings — observation deck, park, and KLCC mall at the base." },
+    { name: "Menara KL (KL Tower)", cat: "attraction", lat: 3.1528, lng: 101.7038,
+      desc: "421m communication tower with a revolving restaurant and sky deck offering panoramic city views." },
+    { name: "Batu Caves", cat: "attraction", lat: 3.2379, lng: 101.6840,
+      desc: "Limestone hill temple complex with a 42.7m golden Murugan statue and the famous rainbow staircase." },
+    { name: "Sultan Abdul Samad Building", cat: "attraction", lat: 3.1481, lng: 101.6944,
+      desc: "Moorish-style landmark built in 1897, facing Merdeka Square — one of KL's most photographed buildings." },
+    { name: "Merdeka Square (Dataran Merdeka)", cat: "attraction", lat: 3.1483, lng: 101.6949,
+      desc: "Historic square where Malaysia's independence was declared in 1957; home to a 95m flagpole." },
+    { name: "Central Market (Pasar Seni)", cat: "attraction", lat: 3.1436, lng: 101.6958,
+      desc: "Art Deco heritage market turned cultural hub for local crafts, art, and souvenirs." },
+    { name: "Petaling Street", cat: "attraction", lat: 3.1436, lng: 101.6970,
+      desc: "KL's bustling Chinatown street market — street food, souvenirs, and a landmark ceremonial arch." },
+    { name: "Kampung Baru", cat: "attraction", lat: 3.1611, lng: 101.7062,
+      desc: "Traditional Malay village enclave in the city centre, known for wooden heritage houses and local food stalls." },
+  ];
+
+  const tenants = [
+    { name: "Restoran Nasi Lemak Medan Pasar", cat: "food", lat: 3.1465, lng: 101.6959,
+      desc: "Traditional nasi lemak & satay stall, family-run since 1990.", hours: "7:00 AM – 6:00 PM daily", phone: "+60 12-345 6781",
+      tags: ["Halal", "Local Favourite", "Cash & QR"], rating: 4, reviews: 128 },
+    { name: "Kedai Kopi Pak Ali", cat: "food", lat: 3.1472, lng: 101.6968,
+      desc: "Old-school kopitiam serving kopi-O and charcoal toast since 1985.", hours: "6:30 AM – 5:00 PM daily", phone: "+60 12-345 6782",
+      tags: ["Heritage", "Breakfast", "Wi-Fi"], rating: 5, reviews: 214 },
+    { name: "Kedai Songket & Batik Warisan", cat: "fashion", lat: 3.1470, lng: 101.6955,
+      desc: "Handwoven songket and batik textiles, custom tailoring available.", hours: "10:00 AM – 8:00 PM daily", phone: "+60 12-345 6783",
+      tags: ["Custom Tailoring", "Souvenirs"], rating: 5, reviews: 76 },
+    { name: "Butik Baju Melayu Aiman", cat: "fashion", lat: 3.1462, lng: 101.6970,
+      desc: "Baju Melayu and baju kurung, ready-made and made-to-measure.", hours: "10:00 AM – 9:00 PM daily", phone: "+60 12-345 6784",
+      tags: ["Made-to-Measure", "Formal Wear"], rating: 4, reviews: 52 },
+    { name: "Muara Arts Studio", cat: "craft", lat: 3.1476, lng: 101.6962,
+      desc: "Local handicrafts, woven baskets, and heritage souvenirs for visitors.", hours: "9:00 AM – 7:00 PM daily", phone: "+60 12-345 6785",
+      tags: ["Souvenirs", "Tourist-Friendly", "Card Accepted"], rating: 5, reviews: 91 },
+    { name: "Warisan Anyaman Craft Gallery", cat: "craft", lat: 3.1466, lng: 101.6948,
+      desc: "Traditional weaving demonstrations and hands-on craft workshops.", hours: "10:00 AM – 6:00 PM (Tue–Sun)", phone: "+60 12-345 6786",
+      tags: ["Workshops", "Family-Friendly"], rating: 4, reviews: 38 },
+    { name: "Medan Pasar Tourist Info Counter", cat: "service", lat: 3.1478, lng: 101.6953,
+      desc: "Maps, guided walk schedules, and visitor assistance in multiple languages.", hours: "9:00 AM – 6:00 PM daily", phone: "+60 3-1234 5678",
+      tags: ["English Spoken", "Free Maps"], rating: 5, reviews: 45 },
+    { name: "Pasar Basah Convenience", cat: "service", lat: 3.1459, lng: 101.6962,
+      desc: "Everyday essentials and mobile top-up services for visitors and tenants.", hours: "8:00 AM – 10:00 PM daily", phone: "+60 12-345 6787",
+      tags: ["24/7 ATM Nearby", "Prepaid Top-Up"], rating: 4, reviews: 29 },
+  ];
+
+  const places = [...tenants.map(t => ({ ...t, kind: 'tenant' })), ...attractions.map(a => ({ ...a, kind: 'attraction' }))];
+  places.forEach(p => { p.distKm = distanceKm(MEDAN_PASAR_CENTER[0], MEDAN_PASAR_CENTER[1], p.lat, p.lng); });
+
+  // ---------- Map setup ----------
+  const map = L.map('map', { zoomControl: false }).setView(MEDAN_PASAR_CENTER, 15);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  function stars(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+  function pinIcon(cat) {
+    const c = CATS[cat];
+    const html = `
+      <div class="gpin-anchor">
+        <div class="gpin" style="background:${c.color}"></div>
+        <div class="gpin-icon-wrap">${c.icon}</div>
+      </div>`;
+    return L.divIcon({ className: '', html, iconSize: [40, 46], iconAnchor: [20, 40], popupAnchor: [0, -36] });
+  }
+
+  function distLabel(km) {
+    if (km < 1.2) return `${Math.round(km * 1000)}m away · ~${Math.max(1, Math.round(km / 5 * 60))} min walk from Medan Pasar`;
+    if (km < 2.5) return `${km.toFixed(1)}km away · ~${Math.round(km / 5 * 60)} min walk from Medan Pasar`;
+    return `${km.toFixed(1)}km from Medan Pasar · recommended by car / e-hailing`;
+  }
+
+  function popupHtml(t) {
+    const c = CATS[t.cat];
+    if (t.kind === 'attraction') {
+      return `
+        <div class="card-banner" style="background:linear-gradient(135deg, ${c.color}, ${c.dark})">
+          ${c.icon}
+          <span class="card-open-badge">★ Landmark</span>
+        </div>
+        <div class="card-body">
+          <div class="card-title">${t.name}</div>
+          <div class="card-cat-row"><span>${c.label}</span></div>
+          <div class="card-desc">${t.desc}</div>
+          <div class="card-detail-row">${ICONS.walk}<span>${distLabel(t.distKm)}</span></div>
+          <div class="card-tags"><span class="card-tag">Self-Guided Walk</span><span class="card-tag">Photo Spot</span></div>
+        </div>
+        <div class="card-actions">
+          <a class="card-action" href="#">${ICONS.directions}<span>Directions</span></a>
+          <a class="card-action" href="#">${ICONS.share}<span>Share</span></a>
+        </div>`;
+    }
+    const tagsHtml = t.tags.map(tag => `<span class="card-tag">${tag}</span>`).join('');
+    return `
+      <div class="card-banner" style="background:linear-gradient(135deg, ${c.color}, ${c.dark})">
+        ${c.icon}
+        <span class="card-open-badge">● Open now</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">${t.name}</div>
+        <div class="card-cat-row">
+          <span class="stars">${stars(t.rating)}</span>
+          <span class="reviews">(${t.reviews})</span>
+          <span>· ${c.label}</span>
+        </div>
+        <div class="card-desc">${t.desc}</div>
+        <div class="card-detail-row">${ICONS.clock}<span>${t.hours}</span></div>
+        <div class="card-detail-row">${ICONS.phone}<span>${t.phone}</span></div>
+        <div class="card-detail-row">${ICONS.pin}<span>Medan Pasar, Kuala Lumpur</span></div>
+        <div class="card-tags">${tagsHtml}</div>
+      </div>
+      <div class="card-actions">
+        <a class="card-action" href="#">${ICONS.directions}<span>Directions</span></a>
+        <a class="card-action" href="#">${ICONS.phone}<span>Call</span></a>
+        <a class="card-action" href="#">${ICONS.share}<span>Share</span></a>
+      </div>`;
+  }
+
+  const markers = {};
+  places.forEach((t, i) => {
+    const marker = L.marker([t.lat, t.lng], { icon: pinIcon(t.cat) }).addTo(map);
+    marker.bindPopup(popupHtml(t), { maxWidth: 290, minWidth: 290 });
+    markers[i] = marker;
+  });
+  map.fitBounds(L.latLngBounds(places.map(p => [p.lat, p.lng])), { padding: [60, 60] });
+
+  // ---------- Locate control (Google-style circular FAB) ----------
+  const locateControl = L.control({ position: 'bottomright' });
+  locateControl.onAdd = function () {
+    const btn = L.DomUtil.create('button', 'gmap-fab');
+    btn.title = 'Show my location';
+    btn.innerHTML = ICONS.locate;
+    btn.style.marginBottom = '10px';
+    btn.onclick = function (e) {
+      e.preventDefault();
+      if (!navigator.geolocation) { alert('Geolocation is not supported by this browser.'); return; }
+      navigator.geolocation.getCurrentPosition(pos => {
+        const latlng = [pos.coords.latitude, pos.coords.longitude];
+        L.marker(latlng, {
+          icon: L.divIcon({
+            className: '',
+            html: '<div style="width:16px;height:16px;border-radius:50%;background:#2E86C1;border:3px solid #fff;box-shadow:0 0 0 4px rgba(46,134,193,0.35);"></div>',
+            iconSize: [16, 16], iconAnchor: [8, 8],
+          })
+        }).addTo(map).bindPopup("You are here (one-time location, not continuously tracked)").openPopup();
+        map.setView(latlng, 17);
+      }, () => alert('Unable to retrieve your location.'));
+    };
+    return btn;
+  };
+  locateControl.addTo(map);
+
+  // ---------- Sidebar: search + filter pills + list ----------
+  const filtersEl = document.getElementById('filters');
+  const listEl = document.getElementById('tenant-list');
+  const countEl = document.getElementById('result-count');
+  const searchInput = document.getElementById('search-input');
+  const clearBtn = document.getElementById('clear-search');
+  let activeFilter = 'all';
+  let searchTerm = '';
+
+  function renderFilters() {
+    const cats = [
+      { key: 'all', label: 'All', icon: ICONS.all },
+      ...Object.entries(CATS).map(([k, v]) => ({ key: k, label: v.label, icon: v.icon, color: v.color })),
+    ];
+    filtersEl.innerHTML = cats.map(c => `<div class="pill ${c.key === activeFilter ? 'active' : ''}" data-key="${c.key}">${c.icon}${c.label}</div>`).join('');
+    filtersEl.querySelectorAll('.pill').forEach(pill => {
+      pill.onclick = () => { activeFilter = pill.dataset.key; renderFilters(); renderList(); };
+    });
+  }
+
+  function getFiltered() {
+    return places.map((t, i) => ({ ...t, i }))
+      .filter(t => activeFilter === 'all' || t.cat === activeFilter)
+      .filter(t => !searchTerm || t.name.toLowerCase().includes(searchTerm));
+  }
+
+  function renderList() {
+    const filtered = getFiltered();
+    countEl.textContent = `${filtered.length} place${filtered.length === 1 ? '' : 's'} found`;
+    listEl.innerHTML = filtered.map(t => {
+      const c = CATS[t.cat];
+      const subLine = t.kind === 'attraction'
+        ? `<div class="cat-line">${c.label}<span class="dot-sep">·</span>${t.distKm.toFixed(1)}km away</div>`
+        : `<div class="rating-row"><span class="stars">${stars(t.rating)}</span><span>${t.rating}.0 (${t.reviews})</span></div><div class="cat-line">${c.label}</div>`;
+      return `
+        <div class="tenant-card" data-i="${t.i}">
+          <div class="icon-badge" style="background:${c.color}">${c.icon}</div>
+          <div class="info">
+            <div class="name">${t.name}</div>
+            ${subLine}
+          </div>
+        </div>`;
+    }).join('');
+    listEl.querySelectorAll('.tenant-card').forEach(card => {
+      card.onclick = () => {
+        const i = card.dataset.i;
+        const t = places[i];
+        map.setView([t.lat, t.lng], t.kind === 'attraction' ? 16 : 18, { animate: true });
+        markers[i].openPopup();
+        listEl.querySelectorAll('.tenant-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+      };
+    });
+  }
+
+  searchInput.addEventListener('input', () => {
+    searchTerm = searchInput.value.trim().toLowerCase();
+    clearBtn.style.display = searchTerm ? 'flex' : 'none';
+    renderList();
+  });
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    searchTerm = '';
+    clearBtn.style.display = 'none';
+    renderList();
+  });
+
+  renderFilters();
+  renderList();
+</script>
+
+</body>
+</html>
